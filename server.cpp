@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <iostream>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
+
+using namespace std;
 
 #define MAX_CLIENTS 20
 #define BUFFER_SIZE 2048
@@ -69,7 +71,7 @@ void check(int check, char *msg)
     }
 }
 
-int main(int argc, char* argv[argc])
+int main(int argc, char* argv[])
 {
     //setting up variables
     int server_fd, max_fd, current_client, activity, portno, opt;
@@ -106,7 +108,7 @@ int main(int argc, char* argv[argc])
     //listening for new connections
     check( listen(server_fd, CLIENTS_AT_A_TIME), "listen failed\n");
 
-    printf("Server listening on Port %d\n", portno);
+    cout<<"Server listening on Port "<<portno<<"\n";
 
     //clearing the socket file descriptors
     FD_ZERO(&fdSet);
@@ -149,10 +151,10 @@ int main(int argc, char* argv[argc])
             int new_client = accept(server_fd, (struct sockaddr*)&address, &addrlen);
             if(new_client == 0)
             {
-                printf("Accept Failed\n");
+                cout<<"Accept Failed\n";
                 exit(1);
             }
-            printf("Client %d added\n", new_client);
+            cout<<"Client "<<new_client<<" added\n" ;
             write(new_client, buffer, strlen(buffer));
             //adding new client to array
             for(int i = 0; i<MAX_CLIENTS; i++)
@@ -176,17 +178,17 @@ int main(int argc, char* argv[argc])
                 {
                     if(read(clients_fd[i], buffer, BUFFER_SIZE) == 0)
                     {
-                        printf("client %d closing connection\n", clients_fd[i]);
+                        cout<<"client "<<clients_fd[i]<<" closing connection\n";
                         FD_CLR(clients_fd[i], &fdSet);
                         close(clients_fd[i]);
                         clients_fd[i] = 0;
                         break;
                     }
                     trim_buffer(buffer, strlen(buffer));
-                    printf("%s\n", buffer);
+                    cout<<buffer<<endl;
                     if(strcmp(buffer, "/leave") == 0)
                     {
-                        printf("client %d closing connection\n", clients_fd[i]);
+                        cout<<"client "<<clients_fd[i]<<"closing connection\n";
                         FD_CLR(clients_fd[i], &fdSet);
                         close(clients_fd[i]);
                         clients_fd[i] = 0;
