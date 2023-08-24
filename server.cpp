@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
+#include <vector>
 
 using namespace std;
 
@@ -15,11 +16,79 @@ using namespace std;
 #define NAME_LENGTH 32
 #define CLIENTS_AT_A_TIME 10
 
+class Client;
 //gloabl variables
 int clients_fd[MAX_CLIENTS];
 fd_set fdSet;
+vector<Client> Client_pointers;
+
+class Client
+{
+    public : 
+        string name; int fd, uid; 
+
+    public : 
+
+        Client(int Fd, int Uid, char* Name);
+        Client(int Fd, int Uid);
+
+        void setName(char* s)
+        {
+            name = s;
+        }
+        void send_message(char* msg);
+        void handle_commands(char* cmd, int fd);
+        void leave_client();
+};
+
+int search_by_fd(int fd)
+{
+    int i = 0;
+
+    for( ; i < Client_pointers.size(); i++)
+    {
+        if(fd == Client_pointers[i].fd)
+        {
+            return i;
+        }
+    }
+    return i;
+}       
+
+Client::Client(int Fd, int Uid)
+{
+    fd = Fd;
+    uid = Uid;
+}
+
+Client::Client(int Fd, int Uid, char* Name)
+{
+    fd = Fd;
+    uid = Uid;
+    name = Name;
+}
+
 
 //functions
+
+void checkClients()
+{
+    for(int i = 0; i<Client_pointers.size(); i++)
+    {
+        cout<<Client_pointers[i].name<<endl;
+    }
+}
+
+void Client::leave_client()
+{
+    cout<<"client "<<name<<" closing connection\n";
+    FD_CLR(fd, &fdSet);
+    close(fd);
+    fd = 0;
+    name = "";
+    uid = 0;
+}
+
 void reset_fd_set(int serverfd)
 {
     FD_ZERO(&fdSet);
@@ -47,12 +116,12 @@ void trim_buffer(char *msg, int length)
     }
 }
 
-void send_message(int clientfd, char* msg)
+void Client::send_message(char* msg)
 {
     sprintf(msg, "%s\n", msg);
     for(int i = 0; i<MAX_CLIENTS; i++)
     {
-        if(clients_fd[i] == clientfd || clients_fd[i] == 0)
+        if(clients_fd[i] == fd || clients_fd[i] == 0)
         {
             continue;
         }
@@ -71,6 +140,69 @@ void check(int check, char *msg)
     }
 }
 
+int search_by_name(string name)
+{
+    for(int i = 0; i<Client_pointers.size(); i++)
+    {
+        if(Client_pointers[i].fd == 0)
+        {
+            continue;
+        }
+        else
+        {
+            if(name.compare(Client_pointers[i].name) == 0)
+            {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+void extract(char* msg, char* cmd)
+{
+    int i = 0;
+    for(; i<strlen(msg); i++)
+    {
+        if(msg[i] == ' ')
+        {
+            break;
+        }
+        cmd[i] = msg[i];
+    }
+    cmd[i] = '\0';
+    cout<<cmd<<endl;
+}
+
+void send_message_private(char* msg, int fd)
+{
+    char name[NAME_LENGTH];
+    extract(msg, name);
+    int i = search_by_name(name);
+    if(i!=-1)
+    {
+        cout<<"Message : "<<msg<<endl;
+        write(Client_pointers[i].fd, &msg[strlen(name)+1], strlen(msg));
+    }
+    else
+    {
+        msg = "Name not Found\n";
+        write(fd, msg, strlen(msg));
+    }
+}
+
+void Client::handle_commands(char* msg, int fd)
+{
+    cout<<msg<<endl;
+    char cmd[20];
+    extract(msg, cmd);
+    if(strcmp(cmd,"pm") == 0)
+    {
+        send_message_private(&msg[3], fd);
+    }
+}
+
+//Main
 int main(int argc, char* argv[])
 {
     //setting up variables
@@ -100,20 +232,24 @@ int main(int argc, char* argv[])
     }
     
     //enabling server socket to resuse address
-    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)), "setsocket Failed\n");
-
+    sprintf(buffer, "setsocket Failed\n");
+    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)), buffer);
+    bzero(buffer, BUFFER_SIZE);
     //binding server
-    check( bind(server_fd, (struct sockaddr*)&address, addrlen) , "Bind failed\n");
-
+    sprintf(buffer, "Bind failed\n");
+    check( bind(server_fd, (struct sockaddr*)&address, addrlen) , buffer);
+    bzero(buffer, BUFFER_SIZE);
     //listening for new connections
-    check( listen(server_fd, CLIENTS_AT_A_TIME), "listen failed\n");
-
+    sprintf(buffer, "listen failed\n");
+    check( listen(server_fd, CLIENTS_AT_A_TIME), buffer);
+    bzero(buffer, BUFFER_SIZE);
     cout<<"Server listening on Port "<<portno<<"\n";
 
     //clearing the socket file descriptors
     FD_ZERO(&fdSet);
     FD_SET(server_fd, &fdSet);
 
+    int uid = 0;
     //accepting clients
     while(1)
     {
@@ -139,7 +275,9 @@ int main(int argc, char* argv[])
         reset_fd_set(server_fd);
         activity = select(max_fd + 1, &fdSet, NULL, NULL, NULL);
 
-        check(activity, "Select Failed\n");
+        sprintf(buffer, "Select Failed\n");
+        check(activity, buffer);
+        bzero(buffer, BUFFER_SIZE);
 
         if(activity == 0)
         {
@@ -156,7 +294,11 @@ int main(int argc, char* argv[])
             }
             cout<<"Client "<<new_client<<" added\n" ;
             write(new_client, buffer, strlen(buffer));
-            //adding new client to array
+
+            //-----------------
+            //ADDING NEW CLIENT
+            //-----------------
+
             for(int i = 0; i<MAX_CLIENTS; i++)
             {
                 if(clients_fd[i] == 0)
@@ -165,6 +307,56 @@ int main(int argc, char* argv[])
                     break;
                 }
             }
+
+            int i = 0;
+            name:
+            sprintf(buffer, "Enter a Name : ");
+            write(new_client, buffer, strlen(buffer));
+            bzero(buffer, BUFFER_SIZE);
+            if(read(new_client, buffer, BUFFER_SIZE) == 0)
+            {
+            cout<<"error\n";
+            }
+
+            cout<<buffer<<endl;
+            for( ; i<Client_pointers.size(); i++)
+            {
+                if(&Client_pointers[i] == NULL)
+                {
+                    continue;
+                }   
+                else
+                {
+                    string s = Client_pointers[i].name;
+                    cout<<s<<endl;
+                    cout<<buffer<<endl;
+                    if(s.compare(buffer) == 0)
+                    {
+                        sprintf(buffer, "Name Already Taken\n");
+                        write(new_client, buffer, strlen(buffer));
+                        goto name;
+                    }
+                }
+            }
+
+            //Forming new Client Object
+            i = search_by_fd(0);     
+            if(i == Client_pointers.size())
+            {
+                cout<<"pushed new client\n";
+                Client_pointers.push_back(Client(new_client, ++uid, buffer));
+                cout<<Client_pointers[i].name<<endl;
+                cout<<Client_pointers[i].uid<<endl;
+                cout<<uid<<endl;
+            }
+            else
+            {
+                cout<<"used client renamed\n";
+                Client_pointers[i] = Client(new_client, ++uid, buffer);
+                cout<<Client_pointers[i].name<<endl;
+                cout<<Client_pointers[i].uid;
+            }
+            bzero(buffer, BUFFER_SIZE);
         }
         else
         {
@@ -176,11 +368,19 @@ int main(int argc, char* argv[])
                 }
                 else if(FD_ISSET(clients_fd[i], &fdSet))
                 {
+                    int iter = search_by_fd(clients_fd[i]);
+                    Client* cli;
+                    cli = &Client_pointers[iter];
+                    
+                    if(iter == Client_pointers.size())
+                    {
+                        cout<<"error fd not found\n";
+                        continue;
+                    }
+                    
                     if(read(clients_fd[i], buffer, BUFFER_SIZE) == 0)
                     {
-                        cout<<"client "<<clients_fd[i]<<" closing connection\n";
-                        FD_CLR(clients_fd[i], &fdSet);
-                        close(clients_fd[i]);
+                        cli->leave_client();
                         clients_fd[i] = 0;
                         break;
                     }
@@ -188,15 +388,17 @@ int main(int argc, char* argv[])
                     cout<<buffer<<endl;
                     if(strcmp(buffer, "/leave") == 0)
                     {
-                        cout<<"client "<<clients_fd[i]<<"closing connection\n";
-                        FD_CLR(clients_fd[i], &fdSet);
-                        close(clients_fd[i]);
+                        cli->leave_client();
                         clients_fd[i] = 0;
                         break;
                     }
+                    else if(buffer[0] == '/')
+                    {
+                        cli->handle_commands(&buffer[1], cli->fd);
+                    }
                     else
                     {
-                        send_message(clients_fd[i], buffer);
+                        cli->send_message(buffer);
                         bzero(buffer, BUFFER_SIZE);
                         break;
                     }
