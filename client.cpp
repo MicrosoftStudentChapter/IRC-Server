@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -6,8 +6,10 @@
 #include <unistd.h>
 #include <sys/select.h>
 
+using namespace std;
+
 #define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 5000
+#define SERVER_PORT 9999
 #define BUFFER_SIZE 1024
 
 int main() {
@@ -69,11 +71,11 @@ int main() {
                 exit(EXIT_FAILURE);
             } else if (bytes_received == 0) {
                 // Server disconnected
-                printf("Server disconnected\n");
+                cout<<"Server disconnected\n";
                 break;
             } else {
                 buffer[bytes_received] = '\0';
-                printf("Received message: %s\n", buffer);
+                cout<<"Received message: "<<buffer<<endl;
             }
         }
     }
