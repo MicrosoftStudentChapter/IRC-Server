@@ -11,6 +11,7 @@
 
 using namespace std;
 
+#define PASSWORD "MLSC2023"
 #define MAX_CLIENTS 20
 #define BUFFER_SIZE 2048
 #define NAME_LENGTH 32
@@ -26,7 +27,7 @@ vector<Client> Client_pointers;
 class Client
 {
     public : 
-        string name; int fd, uid; 
+        string name; int fd, uid, admin;
 
     public : 
 
@@ -45,6 +46,7 @@ class Client
         void leave_client();
         void send_message_private(char* msg);
         void change_name(char* name);
+        void make_admin(char* pwd);
 };
 
 //function definations
@@ -67,6 +69,7 @@ Client::Client(int Fd, int Uid)
 {
     fd = Fd;
     uid = Uid;
+    admin  = 0;
 }
 
 Client::Client(int Fd, int Uid, char* Name)
@@ -74,6 +77,7 @@ Client::Client(int Fd, int Uid, char* Name)
     fd = Fd;
     uid = Uid;
     name = Name;
+    admin = 0;
 }
 
 void checkClients()
@@ -220,11 +224,29 @@ void Client::change_name(char* name)
     }
 }
 
+void Client::make_admin(char* msg)
+{
+    char pwd[strlen(PASSWORD)+1];
+    string_to_char(pwd, PASSWORD);
+    if(strcmp(pwd,msg) == 0)
+    {
+        bzero(buffer, BUFFER_SIZE);
+        sprintf(buffer, "You are now an Admin\n");
+        write(fd, buffer, strlen(buffer));
+        admin = 1;
+    }
+    else 
+    {
+        bzero(buffer, BUFFER_SIZE);
+        sprintf(buffer, "Wrong Password\n");
+        write(fd, buffer, strlen(buffer));
+    }
+}
+
 void Client::handle_commands(char* msg)
 {
     char cmd[20];
     extract(msg, cmd);
-    cout<<cmd<<endl;
     if(strcmp(cmd,"pm") == 0)
     {
         send_message_private(&msg[3]);
@@ -232,6 +254,10 @@ void Client::handle_commands(char* msg)
     else if(strcmp(cmd, "name") == 0)
     {   
         change_name(&msg[5]);
+    }
+    else if(strcmp(cmd, "admin") == 0)
+    {
+        make_admin(&msg[6]);
     }
 }
 
@@ -360,8 +386,6 @@ int main(int argc, char* argv[])
                 else
                 {
                     string s = Client_pointers[i].name;
-                    cout<<s<<endl;
-                    cout<<buffer<<endl;
                     if(s.compare(buffer) == 0)
                     {
                         sprintf(buffer, "Name Already Taken\n");
@@ -377,9 +401,6 @@ int main(int argc, char* argv[])
             {
                 cout<<"pushed new client\n";
                 Client_pointers.push_back(Client(new_client, ++uid, buffer));
-                cout<<Client_pointers[i].name<<endl;
-                cout<<Client_pointers[i].uid<<endl;
-                cout<<uid<<endl;
             }
             else
             {
