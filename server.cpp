@@ -18,6 +18,7 @@ using namespace std;
 
 class Client;
 //gloabl variables
+char buffer[BUFFER_SIZE];
 int clients_fd[MAX_CLIENTS];
 fd_set fdSet;
 vector<Client> Client_pointers;
@@ -29,17 +30,24 @@ class Client
 
     public : 
 
+        //constructors
         Client(int Fd, int Uid, char* Name);
         Client(int Fd, int Uid);
 
-        void setName(char* s)
-        {
-            name = s;
-        }
+        //basic functionality functions 
         void send_message(char* msg);
-        void handle_commands(char* cmd, int fd);
+        void setName(char* s)
+                {
+                    name = s;
+                }
+        //command based functions 
+        void handle_commands(char* cmd);
         void leave_client();
+        void send_message_private(char* msg);
+        void change_name(char* name);
 };
+
+//function definations
 
 int search_by_fd(int fd)
 {
@@ -67,9 +75,6 @@ Client::Client(int Fd, int Uid, char* Name)
     uid = Uid;
     name = Name;
 }
-
-
-//functions
 
 void checkClients()
 {
@@ -171,10 +176,9 @@ void extract(char* msg, char* cmd)
         cmd[i] = msg[i];
     }
     cmd[i] = '\0';
-    cout<<cmd<<endl;
 }
 
-void send_message_private(char* msg, int fd)
+void Client::send_message_private(char* msg)
 {
     char name[NAME_LENGTH];
     extract(msg, name);
@@ -186,19 +190,48 @@ void send_message_private(char* msg, int fd)
     }
     else
     {
-        msg = "Name not Found\n";
+        sprintf(msg,"Name not Found\n");
         write(fd, msg, strlen(msg));
     }
 }
 
-void Client::handle_commands(char* msg, int fd)
+void string_to_char(char* ch, string s)
+{   
+    int i = 0;
+    for(; i<s.length(); i++)
+    {
+        ch[i] = s[i];
+    }
+    ch[i] = '\0';
+}
+
+void Client::change_name(char* name)
 {
-    cout<<msg<<endl;
+    if((int)name[0] != 0)
+    {
+        this->name = name;
+    }
+    else{
+        bzero(buffer, BUFFER_SIZE);
+        char n[this->name.length()+1];
+        string_to_char(n, this->name);
+        sprintf(buffer, "Name : %s\n", n);
+        write(fd, buffer, strlen(buffer));
+    }
+}
+
+void Client::handle_commands(char* msg)
+{
     char cmd[20];
     extract(msg, cmd);
+    cout<<cmd<<endl;
     if(strcmp(cmd,"pm") == 0)
     {
-        send_message_private(&msg[3], fd);
+        send_message_private(&msg[3]);
+    }
+    else if(strcmp(cmd, "name") == 0)
+    {   
+        change_name(&msg[5]);
     }
 }
 
@@ -208,7 +241,6 @@ int main(int argc, char* argv[])
     //setting up variables
     int server_fd, max_fd, current_client, activity, portno, opt;
     opt = 1;
-    char buffer[BUFFER_SIZE];
     portno = atoi(argv[1]);
 
     //setting up server properties
@@ -394,7 +426,7 @@ int main(int argc, char* argv[])
                     }
                     else if(buffer[0] == '/')
                     {
-                        cli->handle_commands(&buffer[1], cli->fd);
+                        cli->handle_commands(&buffer[1]);
                     }
                     else
                     {
