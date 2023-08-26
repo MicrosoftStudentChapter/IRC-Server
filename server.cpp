@@ -29,17 +29,24 @@ class Client
 
     public : 
 
+        //constructors
         Client(int Fd, int Uid, char* Name);
         Client(int Fd, int Uid);
 
-        void setName(char* s)
-        {
-            name = s;
-        }
+        //basic functionality functions 
         void send_message(char* msg);
-        void handle_commands(char* cmd, int fd);
+        void setName(char* s)
+                {
+                    name = s;
+                }
+        //command based functions 
+        void handle_commands(char* cmd);
         void leave_client();
+        void send_message_private(char* msg);
+        void change_name(char* name);
 };
+
+//function definations
 
 int search_by_fd(int fd)
 {
@@ -67,9 +74,6 @@ Client::Client(int Fd, int Uid, char* Name)
     uid = Uid;
     name = Name;
 }
-
-
-//functions
 
 void checkClients()
 {
@@ -171,10 +175,9 @@ void extract(char* msg, char* cmd)
         cmd[i] = msg[i];
     }
     cmd[i] = '\0';
-    cout<<cmd<<endl;
 }
 
-void send_message_private(char* msg, int fd)
+void Client::send_message_private(char* msg)
 {
     char name[NAME_LENGTH];
     extract(msg, name);
@@ -191,14 +194,31 @@ void send_message_private(char* msg, int fd)
     }
 }
 
-void Client::handle_commands(char* msg, int fd)
+void Client::change_name(char* name)
 {
-    cout<<msg<<endl;
+    cout<<"original name : "<<this->name<<endl;
+    cout<<"new name : "<<name<<endl;
+    if(name!=NULL)
+    {
+        this->name = name;
+    }
+    else{
+        cout<<"Name Change error\n";
+    }
+}
+
+void Client::handle_commands(char* msg)
+{
     char cmd[20];
     extract(msg, cmd);
+    cout<<cmd<<endl;
     if(strcmp(cmd,"pm") == 0)
     {
-        send_message_private(&msg[3], fd);
+        send_message_private(&msg[3]);
+    }
+    else if(strcmp(cmd, "name") == 0)
+    {   
+        change_name(&msg[5]);
     }
 }
 
