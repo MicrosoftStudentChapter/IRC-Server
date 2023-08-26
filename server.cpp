@@ -18,6 +18,7 @@ using namespace std;
 
 class Client;
 //gloabl variables
+char buffer[BUFFER_SIZE];
 int clients_fd[MAX_CLIENTS];
 fd_set fdSet;
 vector<Client> Client_pointers;
@@ -189,21 +190,33 @@ void Client::send_message_private(char* msg)
     }
     else
     {
-        msg = "Name not Found\n";
+        sprintf(msg,"Name not Found\n");
         write(fd, msg, strlen(msg));
     }
 }
 
+void string_to_char(char* ch, string s)
+{   
+    int i = 0;
+    for(; i<s.length(); i++)
+    {
+        ch[i] = s[i];
+    }
+    ch[i] = '\0';
+}
+
 void Client::change_name(char* name)
 {
-    cout<<"original name : "<<this->name<<endl;
-    cout<<"new name : "<<name<<endl;
-    if(name!=NULL)
+    if((int)name[0] != 0)
     {
         this->name = name;
     }
     else{
-        cout<<"Name Change error\n";
+        bzero(buffer, BUFFER_SIZE);
+        char n[this->name.length()+1];
+        string_to_char(n, this->name);
+        sprintf(buffer, "Name : %s\n", n);
+        write(fd, buffer, strlen(buffer));
     }
 }
 
@@ -228,7 +241,6 @@ int main(int argc, char* argv[])
     //setting up variables
     int server_fd, max_fd, current_client, activity, portno, opt;
     opt = 1;
-    char buffer[BUFFER_SIZE];
     portno = atoi(argv[1]);
 
     //setting up server properties
@@ -414,7 +426,7 @@ int main(int argc, char* argv[])
                     }
                     else if(buffer[0] == '/')
                     {
-                        cli->handle_commands(&buffer[1], cli->fd);
+                        cli->handle_commands(&buffer[1]);
                     }
                     else
                     {
