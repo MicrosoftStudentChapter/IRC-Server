@@ -8,6 +8,9 @@
 #include <string.h>
 #include <sys/select.h>
 #include <vector>
+#include <ctime>
+#include <cstdio>
+#include <cstring>
 
 using namespace std;
 
@@ -36,7 +39,7 @@ class Client
         {
             name = s;
         }
-        void send_message(char* msg);
+        void send_message(char* msg, string nam);
         void handle_commands(char* cmd, int fd);
         void leave_client();
 };
@@ -116,9 +119,14 @@ void trim_buffer(char *msg, int length)
     }
 }
 
-void Client::send_message(char* msg)
+void Client::send_message(char* msg, string nam)
 {
-    sprintf(msg, "%s\n", msg);
+    std::time_t now = std::time(nullptr);
+    char timestamp[20];
+    std::strftime(timestamp, sizeof(timestamp), "%H:%M:%S", std::localtime(&now));
+
+    char formatted_msg[BUFFER_SIZE];
+    std::sprintf(formatted_msg, "\n%s at %s : %s\n", nam.c_str(),timestamp, msg);
     for(int i = 0; i<MAX_CLIENTS; i++)
     {
         if(clients_fd[i] == fd || clients_fd[i] == 0)
@@ -127,7 +135,7 @@ void Client::send_message(char* msg)
         }
         else
         {
-            write(clients_fd[i], msg, strlen(msg));
+            write(clients_fd[i], formatted_msg, strlen(formatted_msg));
         }
     }
 }
@@ -357,6 +365,15 @@ int main(int argc, char* argv[])
                 cout<<Client_pointers[i].uid;
             }
             bzero(buffer, BUFFER_SIZE);
+            string banner=R"(
+                ██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗
+                ██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝
+                ██║ █╗ ██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  
+                ██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  
+                ╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗
+                 ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝
+            )";
+            write(new_client,banner.c_str(), strlen(banner.c_str()));
         }
         else
         {
@@ -371,7 +388,7 @@ int main(int argc, char* argv[])
                     int iter = search_by_fd(clients_fd[i]);
                     Client* cli;
                     cli = &Client_pointers[iter];
-                    
+
                     if(iter == Client_pointers.size())
                     {
                         cout<<"error fd not found\n";
@@ -398,7 +415,7 @@ int main(int argc, char* argv[])
                     }
                     else
                     {
-                        cli->send_message(buffer);
+                        cli->send_message(buffer,cli->name);
                         bzero(buffer, BUFFER_SIZE);
                         break;
                     }

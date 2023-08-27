@@ -75,7 +75,8 @@ int main() {
                 break;
             } else {
                 buffer[bytes_received] = '\0';
-                cout<<"Received message: "<<buffer<<endl;
+                cout<<buffer<<endl;
+                // cout<<"\n";
             }
         }
     }
