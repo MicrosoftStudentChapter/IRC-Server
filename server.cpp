@@ -7,19 +7,100 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
+#include <vector>
+#include <ctime>
+#include <cstdio>
+#include <cstring>
 
 using namespace std;
 
+#define PASSWORD "MLSC2023"
 #define MAX_CLIENTS 20
 #define BUFFER_SIZE 2048
 #define NAME_LENGTH 32
 #define CLIENTS_AT_A_TIME 10
 
+class Client;
 //gloabl variables
+char buffer[BUFFER_SIZE];
 int clients_fd[MAX_CLIENTS];
 fd_set fdSet;
+vector<Client> Client_pointers;
 
-//functions
+class Client
+{
+    public : 
+        string name; int fd, uid, admin;
+
+    public : 
+
+        //constructors
+        Client(int Fd, int Uid, char* Name);
+        Client(int Fd, int Uid);
+
+        //basic functionality functions 
+        void send_message(char* msg, string name);
+        void setName(char* s)
+                {
+                    name = s;
+                }
+        //command based functions 
+        void handle_commands(char* cmd);
+        void leave_client();
+        void send_message_private(char* msg);
+        void change_name(char* name);
+        void make_admin(char* pwd);
+};
+
+//function definations
+
+int search_by_fd(int fd)
+{
+    int i = 0;
+
+    for( ; i < Client_pointers.size(); i++)
+    {
+        if(fd == Client_pointers[i].fd)
+        {
+            return i;
+        }
+    }
+    return i;
+}       
+
+Client::Client(int Fd, int Uid)
+{
+    fd = Fd;
+    uid = Uid;
+    admin  = 0;
+}
+
+Client::Client(int Fd, int Uid, char* Name)
+{
+    fd = Fd;
+    uid = Uid;
+    name = Name;
+    admin = 0;
+}
+
+void checkClients()
+{
+    for(int i = 0; i<Client_pointers.size(); i++)
+    {
+        cout<<Client_pointers[i].name<<endl;
+    }
+}
+
+void Client::leave_client()
+{
+    cout<<"client "<<name<<" closing connection\n";
+    FD_CLR(fd, &fdSet);
+    close(fd);
+    fd = 0;
+    name = "";
+    uid = 0;
+}
+
 void reset_fd_set(int serverfd)
 {
     FD_ZERO(&fdSet);
@@ -47,18 +128,23 @@ void trim_buffer(char *msg, int length)
     }
 }
 
-void send_message(int clientfd, char* msg)
+void Client::send_message(char* msg, string nam)
 {
-    sprintf(msg, "%s\n", msg);
+    std::time_t now = std::time(nullptr);
+    char timestamp[20];
+    std::strftime(timestamp, sizeof(timestamp), "%H:%M:%S", std::localtime(&now));
+
+    char formatted_msg[BUFFER_SIZE];
+    std::sprintf(formatted_msg, "\n%s at %s : %s\n", nam.c_str(),timestamp, msg);
     for(int i = 0; i<MAX_CLIENTS; i++)
     {
-        if(clients_fd[i] == clientfd || clients_fd[i] == 0)
+        if(clients_fd[i] == fd || clients_fd[i] == 0)
         {
             continue;
         }
         else
         {
-            write(clients_fd[i], msg, strlen(msg));
+            write(clients_fd[i], formatted_msg, strlen(formatted_msg));
         }
     }
 }
@@ -71,12 +157,124 @@ void check(int check, char *msg)
     }
 }
 
+int search_by_name(string name)
+{
+    for(int i = 0; i<Client_pointers.size(); i++)
+    {
+        if(Client_pointers[i].fd == 0)
+        {
+            continue;
+        }
+        else
+        {
+            if(name.compare(Client_pointers[i].name) == 0)
+            {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+void extract(char* msg, char* cmd)
+{
+    int i = 0;
+    for(; i<strlen(msg); i++)
+    {
+        if(msg[i] == ' ')
+        {
+            break;
+        }
+        cmd[i] = msg[i];
+    }
+    cmd[i] = '\0';
+}
+
+void Client::send_message_private(char* msg)
+{
+    char name[NAME_LENGTH];
+    extract(msg, name);
+    int i = search_by_name(name);
+    if(i!=-1)
+    {
+        cout<<"Message : "<<msg<<endl;
+        write(Client_pointers[i].fd, &msg[strlen(name)+1], strlen(msg));
+    }
+    else
+    {
+        sprintf(msg,"Name not Found\n");
+        write(fd, msg, strlen(msg));
+    }
+}
+
+void string_to_char(char* ch, string s)
+{   
+    int i = 0;
+    for(; i<s.length(); i++)
+    {
+        ch[i] = s[i];
+    }
+    ch[i] = '\0';
+}
+
+void Client::change_name(char* name)
+{
+    if((int)name[0] != 0)
+    {
+        this->name = name;
+    }
+    else{
+        bzero(buffer, BUFFER_SIZE);
+        char n[this->name.length()+1];
+        string_to_char(n, this->name);
+        sprintf(buffer, "Name : %s\n", n);
+        write(fd, buffer, strlen(buffer));
+    }
+}
+
+void Client::make_admin(char* msg)
+{
+    char pwd[strlen(PASSWORD)+1];
+    string_to_char(pwd, PASSWORD);
+    if(strcmp(pwd,msg) == 0)
+    {
+        bzero(buffer, BUFFER_SIZE);
+        sprintf(buffer, "You are now an Admin\n");
+        write(fd, buffer, strlen(buffer));
+        admin = 1;
+    }
+    else 
+    {
+        bzero(buffer, BUFFER_SIZE);
+        sprintf(buffer, "Wrong Password\n");
+        write(fd, buffer, strlen(buffer));
+    }
+}
+
+void Client::handle_commands(char* msg)
+{
+    char cmd[20];
+    extract(msg, cmd);
+    if(strcmp(cmd,"pm") == 0)
+    {
+        send_message_private(&msg[3]);
+    }
+    else if(strcmp(cmd, "name") == 0)
+    {   
+        change_name(&msg[5]);
+    }
+    else if(strcmp(cmd, "admin") == 0)
+    {
+        make_admin(&msg[6]);
+    }
+}
+
+//Main
 int main(int argc, char* argv[])
 {
     //setting up variables
     int server_fd, max_fd, current_client, activity, portno, opt;
     opt = 1;
-    char buffer[BUFFER_SIZE];
     portno = atoi(argv[1]);
 
     //setting up server properties
@@ -100,20 +298,24 @@ int main(int argc, char* argv[])
     }
     
     //enabling server socket to resuse address
-    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)), "setsocket Failed\n");
-
+    sprintf(buffer, "setsocket Failed\n");
+    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)), buffer);
+    bzero(buffer, BUFFER_SIZE);
     //binding server
-    check( bind(server_fd, (struct sockaddr*)&address, addrlen) , "Bind failed\n");
-
+    sprintf(buffer, "Bind failed\n");
+    check( bind(server_fd, (struct sockaddr*)&address, addrlen) , buffer);
+    bzero(buffer, BUFFER_SIZE);
     //listening for new connections
-    check( listen(server_fd, CLIENTS_AT_A_TIME), "listen failed\n");
-
+    sprintf(buffer, "listen failed\n");
+    check( listen(server_fd, CLIENTS_AT_A_TIME), buffer);
+    bzero(buffer, BUFFER_SIZE);
     cout<<"Server listening on Port "<<portno<<"\n";
 
     //clearing the socket file descriptors
     FD_ZERO(&fdSet);
     FD_SET(server_fd, &fdSet);
 
+    int uid = 0;
     //accepting clients
     while(1)
     {
@@ -139,7 +341,9 @@ int main(int argc, char* argv[])
         reset_fd_set(server_fd);
         activity = select(max_fd + 1, &fdSet, NULL, NULL, NULL);
 
-        check(activity, "Select Failed\n");
+        sprintf(buffer, "Select Failed\n");
+        check(activity, buffer);
+        bzero(buffer, BUFFER_SIZE);
 
         if(activity == 0)
         {
@@ -156,7 +360,11 @@ int main(int argc, char* argv[])
             }
             cout<<"Client "<<new_client<<" added\n" ;
             write(new_client, buffer, strlen(buffer));
-            //adding new client to array
+
+            //-----------------
+            //ADDING NEW CLIENT
+            //-----------------
+
             for(int i = 0; i<MAX_CLIENTS; i++)
             {
                 if(clients_fd[i] == 0)
@@ -165,6 +373,60 @@ int main(int argc, char* argv[])
                     break;
                 }
             }
+
+            int i = 0;
+            name:
+            sprintf(buffer, "Enter a Name : ");
+            write(new_client, buffer, strlen(buffer));
+            bzero(buffer, BUFFER_SIZE);
+            if(read(new_client, buffer, BUFFER_SIZE) == 0)
+            {
+            cout<<"error\n";
+            }
+
+            cout<<buffer<<endl;
+            for( ; i<Client_pointers.size(); i++)
+            {
+                if(&Client_pointers[i] == NULL)
+                {
+                    continue;
+                }   
+                else
+                {
+                    string s = Client_pointers[i].name;
+                    if(s.compare(buffer) == 0)
+                    {
+                        sprintf(buffer, "Name Already Taken\n");
+                        write(new_client, buffer, strlen(buffer));
+                        goto name;
+                    }
+                }
+            }
+
+            //Forming new Client Object
+            i = search_by_fd(0);     
+            if(i == Client_pointers.size())
+            {
+                cout<<"pushed new client\n";
+                Client_pointers.push_back(Client(new_client, ++uid, buffer));
+            }
+            else
+            {
+                cout<<"used client renamed\n";
+                Client_pointers[i] = Client(new_client, ++uid, buffer);
+                cout<<Client_pointers[i].name<<endl;
+                cout<<Client_pointers[i].uid;
+            }
+            bzero(buffer, BUFFER_SIZE);
+            string banner=R"(
+                ██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗
+                ██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝
+                ██║ █╗ ██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  
+                ██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  
+                ╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗
+                 ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝
+            )";
+            write(new_client,banner.c_str(), strlen(banner.c_str()));
         }
         else
         {
@@ -176,11 +438,19 @@ int main(int argc, char* argv[])
                 }
                 else if(FD_ISSET(clients_fd[i], &fdSet))
                 {
+                    int iter = search_by_fd(clients_fd[i]);
+                    Client* cli;
+                    cli = &Client_pointers[iter];
+
+                    if(iter == Client_pointers.size())
+                    {
+                        cout<<"error fd not found\n";
+                        continue;
+                    }
+                    
                     if(read(clients_fd[i], buffer, BUFFER_SIZE) == 0)
                     {
-                        cout<<"client "<<clients_fd[i]<<" closing connection\n";
-                        FD_CLR(clients_fd[i], &fdSet);
-                        close(clients_fd[i]);
+                        cli->leave_client();
                         clients_fd[i] = 0;
                         break;
                     }
@@ -188,15 +458,17 @@ int main(int argc, char* argv[])
                     cout<<buffer<<endl;
                     if(strcmp(buffer, "/leave") == 0)
                     {
-                        cout<<"client "<<clients_fd[i]<<"closing connection\n";
-                        FD_CLR(clients_fd[i], &fdSet);
-                        close(clients_fd[i]);
+                        cli->leave_client();
                         clients_fd[i] = 0;
                         break;
                     }
+                    else if(buffer[0] == '/')
+                    {
+                        cli->handle_commands(&buffer[1]);
+                    }
                     else
                     {
-                        send_message(clients_fd[i], buffer);
+                        cli->send_message(buffer,cli->name);
                         bzero(buffer, BUFFER_SIZE);
                         break;
                     }
