@@ -39,7 +39,7 @@ class Client
         Client(int Fd, int Uid);
 
         //basic functionality functions 
-        void send_message(char* msg);
+        void send_message(char* msg, string name);
         void setName(char* s)
                 {
                     name = s;
